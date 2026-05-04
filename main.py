@@ -9,19 +9,76 @@
 
 # modules 
 import logging
+import os
 import sys
-import replit
 import time
 import threading
-from getkey import getkey, keys
 import passages
-from colorama import init, Fore, Back, Style
+
+try:
+  import msvcrt
+except ImportError:
+  msvcrt = None
+
+try:
+  import termios
+  import tty
+except ImportError:
+  termios = None
+  tty = None
+
+try:
+  from colorama import just_fix_windows_console, Fore, Back, Style
+  just_fix_windows_console()
+except ImportError:
+  class Fore:
+    GREEN = "\033[32m"
+    BLUE = "\033[34m"
+    RED = "\033[31m"
+
+  class Back:
+    YELLOW = "\033[43m"
+    RED = "\033[41m"
+    GREEN = "\033[42m"
+
+  class Style:
+    NORMAL = "\033[22m"
+    RESET_ALL = "\033[0m"
 
 #init logging
 logging.basicConfig(filename='log.txt', level=logging.DEBUG, format=' %(asctime)s - %(levelname)s - %(message)s')
 
 # create trials list
 trials = []
+
+def clear_screen():
+  '''
+  Clears the terminal in a way that works outside Replit.
+  '''
+  os.system("cls" if os.name == "nt" else "clear")
+
+
+def get_key():
+  '''
+  Reads one keypress without requiring Enter.
+  '''
+  if msvcrt is not None:
+    key = msvcrt.getwch()
+    if key in ("\x00", "\xe0"):
+      msvcrt.getwch()
+      return ""
+    return key
+
+  if not sys.stdin.isatty() or termios is None or tty is None:
+    return sys.stdin.read(1)
+
+  fd = sys.stdin.fileno()
+  old_settings = termios.tcgetattr(fd)
+  try:
+    tty.setraw(fd)
+    return sys.stdin.read(1)
+  finally:
+    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 # Class required to move monster on its own
 class GameState:
@@ -86,11 +143,7 @@ class GameState:
     try:
       return self.passage[0].lower()
     except IndexError:
-      replit.clear()
-
       return 'escaped'
-      print("You have escaped...\n[PRESS ENTER]")
-      input()
 
 
 def print_with_color(string, color, **kwargs):
@@ -141,7 +194,7 @@ def moveMonster(gameState, rest):
     # Add a space before the monster, and delete a space after the monster so that it looks like it moved closer to the bike
     gameState.progressBarTop.insert(0, " ")
     gameState.progressBarTop.pop(gameState.progressBarTop.index("🚲")-1)
-    replit.clear()
+    clear_screen()
 
     #Outputs
     print_with_color(f"{''.join(gameState.correctWords)}", Fore.GREEN)
@@ -153,7 +206,7 @@ def moveMonster(gameState, rest):
     print(f"{''.join(gameState.progressBarTop)}")
     print(f"{''.join(gameState.progressBarBottom)}\n")
 
-  replit.clear()
+  clear_screen()
 
 def pedal(passage, monster, monsterSpeed):
   '''
@@ -182,11 +235,11 @@ def pedal(passage, monster, monsterSpeed):
   progressBarBottom = [ "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "_", "___","🚩"]
   # Count down
   input("\n\n[press enter to begin]\n")
-  replit.clear()
+  clear_screen()
   for i in range(3):
     print(3-i)
     time.sleep(0.5)
-    replit.clear()
+    clear_screen()
 
   # start clock, used to calculate WPM
   start = time.time()
@@ -225,12 +278,14 @@ def pedal(passage, monster, monsterSpeed):
       gameState.currentWord = passage[1].lower()
 
     # get user input
-    key = getkey().lower()
+    key = get_key().lower()
+    if key == "\x03":
+      raise KeyboardInterrupt
 
       # print all the characters before current letter in green, the letter you're on in yellow, and the ones left to spell in white.
     if key == passage[0].lower():
       correctWords.append(passage.pop(0))
-      replit.clear()
+      clear_screen()
       print_with_color(f"{''.join(correctWords)}", Fore.GREEN)
 
       # Print current word with a yellow highlight to differentiate it
@@ -245,7 +300,7 @@ def pedal(passage, monster, monsterSpeed):
     # if input doesn't match required input highlight the current word in red instead of yellow
     elif key != passage[0].lower():
       # refresh screen
-      replit.clear()
+      clear_screen()
 
       # print passage
       print_with_color(f"{''.join(correctWords)}", Fore.GREEN)
@@ -288,7 +343,7 @@ def pedal(passage, monster, monsterSpeed):
     #end program if monster catches you
     if (gameState.icon not in gameState.progressBarTop):
       thread.join()
-      replit.clear()
+      clear_screen()
       return 'lost'
 
   # end thread
@@ -349,8 +404,21 @@ classAssertions = GameState("None", "None", "", "None", "None", "None", "None", 
 assert classAssertions.getCurrentWord() == "escaped"
 
 
-#Title Screen
-print_with_color('''
+def replay_level_prompt():
+  print("You were caught, what would you like to do\n1. Restart level\n2. Exit Game")
+  choice = input("Enter corresponding number: ")
+  while choice not in ('1', '2'):
+    choice = input("Enter a valid choice: ")
+
+  if choice == '2':
+    sys.exit()
+
+  print("\n[RESTARTED]")
+
+
+def main():
+  #Title Screen
+  print_with_color('''
 ██████╗░██╗██╗░░██╗███████╗  ███████╗░█████╗░██████╗░  
 ██╔══██╗██║██║░██╔╝██╔════╝  ██╔════╝██╔══██╗██╔══██╗  
 ██████╦╝██║█████═╝░█████╗░░  █████╗░░██║░░██║██████╔╝  
@@ -365,7 +433,7 @@ print_with_color('''
 ░░░██║░░░╚█████╔╝╚██████╔╝██║░░██║  ███████╗██║██║░░░░░███████╗
 ░░░╚═╝░░░░╚════╝░░╚═════╝░╚═╝░░╚═╝  ╚══════╝╚═╝╚═╝░░░░░╚══════╝
 ''', Fore.BLUE)
-print_with_color('''
+  print_with_color('''
 ▒█▀▀█ █▀▀█ █▀▀ █▀▀ █▀▀ 　 ▒█▀▀▀ ▒█▄░▒█ ▀▀█▀▀ ▒█▀▀▀ ▒█▀▀█ 　 
 ▒█▄▄█ █▄▄▀ █▀▀ ▀▀█ ▀▀█ 　 ▒█▀▀▀ ▒█▒█▒█ ░▒█░░ ▒█▀▀▀ ▒█▄▄▀ 　 
 ▒█░░░ ▀░▀▀ ▀▀▀ ▀▀▀ ▀▀▀ 　 ▒█▄▄▄ ▒█░░▀█ ░▒█░░ ▒█▄▄▄ ▒█░▒█ 　 
@@ -373,61 +441,38 @@ print_with_color('''
 ▀▀█▀▀ ▒█▀▀▀█ 　 ▒█▀▀█ ▒█▀▀▀ ▒█▀▀█ ▀█▀ ▒█▄░▒█ 
 ░▒█░░ ▒█░░▒█ 　 ▒█▀▀▄ ▒█▀▀▀ ▒█░▄▄ ▒█░ ▒█▒█▒█ 
 ░▒█░░ ▒█▄▄▄█ 　 ▒█▄▄█ ▒█▄▄▄ ▒█▄▄█ ▄█▄ ▒█░░▀█\n\n\n\n''', Fore.RED)
-input()
-replit.clear()
+  input()
+  clear_screen()
 
-# print expositon
-print('''The year is 2222, and monsters have taken over the world. Only you remain, Bry Sickle, the fastest (and now only) cyclist in the world. You must bike away from the monsters in order to survive.''')
+  # print expositon
+  print('''The year is 2222, and monsters have taken over the world. Only you remain, Bry Sickle, the fastest (and now only) cyclist in the world. You must bike away from the monsters in order to survive.''')
 
-# Loop until win or close
-while pedal(passages.passages[0], "👾", 2) == 'lost':
-  print("You were caught, what would you like to do\n1. Restart level\n2. Exit Game")
-  choice = input("Enter corresponding number: ")
-  #make sure choice is valid
-  while choice != '1' or choice !='2':
-    if choice == '1':
-      print("\n[RESTARTED]")
-      break
-    elif choice == '2':
-      sys.exit()
-    else:
-      choice = input("Enter a valid choice: ")
+  # Loop until win or close
+  while pedal(passages.passages[0], "👾", 2) == 'lost':
+    replay_level_prompt()
 
-print_with_color(f"You are currently typing at {averageWPM(trials)} WPM\n", Back.GREEN)
-print("You seem to have lost it. You enter an abandoned building and choose to look inside. Instantly you see a map labeled with the building you're in and a place labeled 'CURE!!!' just a little ways away. You decide to investigate, but just as you hop onto your bike you're seen by another monster.")
+  print_with_color(f"You are currently typing at {averageWPM(trials)} WPM\n", Back.GREEN)
+  print("You seem to have lost it. You enter an abandoned building and choose to look inside. Instantly you see a map labeled with the building you're in and a place labeled 'CURE!!!' just a little ways away. You decide to investigate, but just as you hop onto your bike you're seen by another monster.")
 
-# Loop until win or close
-while pedal(passages.passages[1], "👹", 1.6)== 'lost':
-  print("You were caught, what would you like to do\n1. Restart level\n2. Exit Game")
-  choice = input("Enter corresponding number: ")
-  #make sure choice valid
-  while choice != '1' or choice !='2':
-    if choice == '1':
-      print("\n[RESTARTED]")
-      break
-    elif choice == '2':
-      sys.exit()
-    else:
-      choice = input("Enter a valid choice: ")
-replit.clear()
+  # Loop until win or close
+  while pedal(passages.passages[1], "👹", 1.6)== 'lost':
+    replay_level_prompt()
+  clear_screen()
 
-print_with_color(f"You are currently typing at {averageWPM(trials)} WPM\n", Back.GREEN)
-print("You appear to have lost the monster. You arrive at the place labeled 'CURE!!!' on the map, and it seems to be a gated farmyard with a small shed in the distance. You hear something behind you and turn around to see largest monster ever. You instantly begin pedaling to the shed, maybe you can hope to escape it there...")
+  print_with_color(f"You are currently typing at {averageWPM(trials)} WPM\n", Back.GREEN)
+  print("You appear to have lost the monster. You arrive at the place labeled 'CURE!!!' on the map, and it seems to be a gated farmyard with a small shed in the distance. You hear something behind you and turn around to see largest monster ever. You instantly begin pedaling to the shed, maybe you can hope to escape it there...")
 
-# Loop until win or close
-while pedal(passages.passages[2], "👽", 1.3)== 'lost':
-  print("You were caught, what would you like to do\n1. Restart level\n2. Exit Game")
-  choice = input("Enter corresponding number: ")
-  #make sure choice valid
-  while choice != '1' or choice !='2':
-    if choice == '1':
-      replit.clear()
-      print("\n[RESTARTED]")
-      break
-    elif choice == '2':
-      sys.exit()
-    else:
-      choice = input("Enter a valid choice: ")
+  # Loop until win or close
+  while pedal(passages.passages[2], "👽", 1.3)== 'lost':
+    replay_level_prompt()
 
-print("You hop off your bike and enter the shack panting. You see a button labelled 'PRESS!!!' and pick it up. You cautiously press it and hear loud shrieks coming from outside the shed you look outside to see all the monsters lying dead. maybe they were infused with plotde vice, a special thing that kills them or something...\n")
-print(f"You have saved the world while writing/pedalling at an average of {averageWPM(trials)}WPM!")
+  print("You hop off your bike and enter the shack panting. You see a button labelled 'PRESS!!!' and pick it up. You cautiously press it and hear loud shrieks coming from outside the shed you look outside to see all the monsters lying dead. maybe they were infused with plotde vice, a special thing that kills them or something...\n")
+  print(f"You have saved the world while writing/pedalling at an average of {averageWPM(trials)}WPM!")
+
+
+if __name__ == "__main__":
+  try:
+    main()
+  except KeyboardInterrupt:
+    clear_screen()
+    print("Game exited.")
